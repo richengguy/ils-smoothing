@@ -1,8 +1,43 @@
 from typing import Tuple
 
 import numpy as np
-import scipy.fft
+from scipy.fft import fft2, ifft2
+from scipy.ndimage import convolve
 from skimage.util import img_as_float32
+
+
+def _charbonnier_derivative(x: np.ndarray, p: float, e: float) -> np.ndarray:
+    '''Computes the derivate of the Charbonnier penalty function.
+
+    The Charbonnier penalty is defined as
+
+    ..math::
+
+        \\phi(x) = \\left(x^2 + \\epsilon)^\\frac{p}{2}.
+
+    Therefore, its derivative, with respect to :math:`x`, is given by
+
+    ..math::
+
+        \\frac{d \\phi(x)}{dx} = p(x^2 + \\epsilon)^\\(\\frac{p}{2} - 1\\).
+
+    This is used in the filter's optimization loop.
+
+    Parameters
+    ----------
+    x : np.ndarray
+        value going into the penalty function
+    p : float
+        the "strength" of penalizer
+    e : float
+        value of :math:`\\epsilon`
+
+    Returns
+    -------
+    np.ndarray
+        the value of the derivative
+    '''
+    return p * (x**2 + e) ** (p/2 - 1)
 
 
 def _frequency_response(h: np.ndarray, sz: Tuple[int, int]) -> np.ndarray:
@@ -38,7 +73,7 @@ def _frequency_response(h: np.ndarray, sz: Tuple[int, int]) -> np.ndarray:
 
     h_padded = np.zeros(sz)
     h_padded[:h.shape[0], :h.shape[1]] = h
-    return scipy.fft.fft2(h_padded)
+    return fft2(h_padded)
 
 
 class ILSSmoothingFilter:
