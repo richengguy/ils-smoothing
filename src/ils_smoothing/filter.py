@@ -1,9 +1,9 @@
+import enum
 from typing import Tuple
 
 import numpy as np
 from scipy.fft import fft2, ifft2
-from scipy.ndimage import convolve
-from skimage.util import img_as_float32
+from skimage.util import img_as_float
 
 
 def _charbonnier_derivative(x: np.ndarray, p: float, e: float) -> np.ndarray:
@@ -76,6 +76,65 @@ def _frequency_response(h: np.ndarray, sz: Tuple[int, int]) -> np.ndarray:
     return fft2(h_padded)
 
 
+class Direction(enum.IntEnum):
+    '''Gradient filtering direction.'''
+    VERTICAL = 0
+    HORIZONTAL = 1
+
+
+def gradient_frequency(direction: Direction, outsz: Tuple[int, int]) -> np.ndarray:
+    '''Compute the frequency response of the backwards difference kernel.
+
+    A backwards difference, i.e. :math:`\\Delta x[n] = x[n] - x[n - 1]`, is
+    equivalent to the filtering kernel
+    :math:`h[n] = \\begin{bmatrix} 1 & -1 \\end{bmatrix}`.  When doing any sort
+    of frequency-domain filtering we often need to zero-pad so that the filter's
+    frequency response image is the same szie the image being filtered.  Because
+    the kernel is so small, we can directly calculate the DFT.
+
+    Given a sequence :math:`h[n]` of length :math:`N`, where :math:`h[0] = 1`
+    and :math:`h[1] = -1`, the DFT :math:`\\mathcal{F}\\{h[n]\\} = H[k]` is
+
+    .. math::
+
+        H[k] &= \\sum_{n=0}^{N-1} h[n]e^{-j 2\\pi n \\frac{k}{N}} \\\\
+             &= (1)e^{-j 2\\pi \\frac{k}{N}(0)} + (-1)e^{-j 2\\pi \\frac{k}{N}(1)} \\\\
+             &= 1 - e^{-j 2\\pi \\frac{k}{N}}.
+
+    Extending this into 2D is trivial. We can just replicate the 1D solution for
+    each row because all of the values "below" :math:`h[n]` are zero from the
+    zero-padding,  This is just an outcome of the DFT being separable (each
+    dimension is its own 1D DFT, so a 2D DFT is two 1D DFTs, a 3D DFT is three
+    1D DFTs and so on).
+
+    Parameters
+    ----------
+    direction : Direction
+        the kernel's direction
+    outsz : Tuple[int, int]
+        output size for the frequency domain image
+
+    Returns
+    -------
+    ndarray
+        a numpy array with the frequency-domain response for the gradient filter
+    '''  # noqa: E501
+    rows, cols = outsz
+    if direction == Direction.HORIZONTAL:
+        N = cols
+    elif direction == Direction.VERTICAL:
+        N = rows
+
+    k = np.arange(N)
+    w = 2 * np.pi * k / N
+    H = 1 - np.exp(-1j * w)
+
+    if direction == Direction.HORIZONTAL:
+        return np.tile(H, (rows, 1))
+    elif direction == Direction.VERTICAL:
+        return np.tile(H[np.newaxis].T, (1, cols))
+
+
 class ILSSmoothingFilter:
     '''Implementation of the Iterative Least Squares smoothing filter.
 
@@ -118,7 +177,7 @@ class ILSSmoothingFilter:
         self.edge_preservation = edge_preservation
         self.iterations = iterations
         self.epsilon = epsilon
-        self._c = self.smoothing * self.epsilon ** (self.smoothing/2 - 1)
+        self._c = self.edge_preservation * self.epsilon ** (self.edge_preservation/2 - 1)
 
     def apply(self, img: np.ndarray) -> np.ndarray:
         '''Apply the filter onto some image.
@@ -143,44 +202,43 @@ class ILSSmoothingFilter:
         if img.ndim == 3 and img.shape[0] != 1:
             raise ValueError('Input must be a monochrome image.')
 
-        img = img_as_float32(img)
-        grad = np.array([[1, -1]])
+        # Setup the image (includes padding).
+        pad_width = max(int(img.shape[0]/4), int(img.shape[1]/4))
+        padded = np.pad(img_as_float(img), pad_width, mode='edge')
 
         # Pre-compute all of the static Fourier transforms.
-        fourier_delta_x = _frequency_response(grad, img.shape)
-        fourier_delta_y = _frequency_response(grad.T, img.shape)
-        fourier_img = fft2(img)
+        fourier_delta_x = gradient_frequency(Direction.HORIZONTAL, padded.shape)
+        fourier_delta_y = gradient_frequency(Direction.VERTICAL, padded.shape)
 
         # Compute the denominator of equation (9).  This is done in two steps
         # for clarity.
-        denominator = (np.conj(fourier_delta_x)*fourier_delta_x +
-                       np.conj(fourier_delta_y)*fourier_delta_y)
-        denominator = 1 + (self._c / 2) * self.smoothing * denominator
+        denominator = np.abs(fourier_delta_x)**2 + np.abs(fourier_delta_y)**2
+        denominator = 1 + 0.5 * self._c * self.smoothing * denominator
 
         # Prepare for the iterative part.
-        output = img
+        output = padded
+        fourier_output = fft2(output)
 
-        # Run the loops.
+        # Run the update loop, gradually smoothing out the image.
         for i in range(self.iterations):
             # 1. Compute the gradients of the smoothed image.
-            doutput_x = convolve(output, grad)
-            doutput_y = convolve(output, grad.T)
+            doutput_x = ifft2(fourier_delta_x * fourier_output).real
+            doutput_y = ifft2(fourier_delta_y * fourier_output).real
 
             # 2. Compute the "update" images; this is equation (7) in the paper.
             u_x = self._c * doutput_x - _charbonnier_derivative(doutput_x, self.edge_preservation, self.epsilon)  # noqa: E501
             u_y = self._c * doutput_y - _charbonnier_derivative(doutput_y, self.edge_preservation, self.epsilon)  # noqa: E501
 
             # 3. Compute the "update" derivatives.
-            # The sign is flipped so that it exploits the symmetry in a
-            # real-valued FFT, namely x(-t) = -X*(w).  This allows a major
-            # simplification in the update equations.
-            du_x = convolve(u_x, -grad)
-            du_y = convolve(u_y, -grad.T)
+            U_x = np.conj(fourier_delta_x) * fft2(u_x)
+            U_y = np.conj(fourier_delta_y) * fft2(u_y)
 
             # 4. Compute the numerator of equation (9).
-            numerator = fourier_img + 0.5 * self.smoothing * fft2(du_x + du_y)
+            numerator = fourier_output + 0.5 * self.smoothing * (U_x + U_y)
 
             # 5. Compute the inverse FFT and take the real value.
-            output = ifft2(numerator / denominator).real
+            fourier_output = numerator / denominator
 
-        return output
+        # Transform back into spatial domain and remove the excess padding.
+        output = np.abs(ifft2(fourier_output))
+        return output[pad_width:(pad_width+img.shape[0]), pad_width:(pad_width+img.shape[1])]
