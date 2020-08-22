@@ -19,7 +19,7 @@ def _charbonnier_derivative(x: np.ndarray, p: float, e: float) -> np.ndarray:
 
     ..math::
 
-        \\frac{d \\phi(x)}{dx} = p(x^2 + \\epsilon)^\\(\\frac{p}{2} - 1\\).
+        \\frac{d \\phi(x)}{dx} = px(x^2 + \\epsilon)^\\(\\frac{p}{2} - 1\\).
 
     This is used in the filter's optimization loop.
 
@@ -37,7 +37,7 @@ def _charbonnier_derivative(x: np.ndarray, p: float, e: float) -> np.ndarray:
     np.ndarray
         the value of the derivative
     '''
-    return p * (x**2 + e) ** (p/2 - 1)
+    return p * x * (x**2 + e) ** (0.5 * p - 1)
 
 
 def _frequency_response(h: np.ndarray, sz: Tuple[int, int]) -> np.ndarray:
