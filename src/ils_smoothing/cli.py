@@ -41,8 +41,11 @@ def main(no_input: bool, smoothing: float, edge_preservation: float,
     for i in range(img.ndim):
         out[:, :, i] = ils.apply(img[:, :, i])
 
-    # save the result.
-    imsave(out_path, out, quality=100)
+    # Save the result; JPEG has the quality set to 100 since the default is 75.
+    args = {}
+    if out_path.suffix != '.png':
+        args['quality'] = 100
+    imsave(out_path, out, **args)
 
 
 if __name__ == '__main__':
