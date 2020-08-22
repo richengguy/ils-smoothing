@@ -3,7 +3,7 @@ from typing import Tuple
 
 import numpy as np
 from scipy.fft import fft2, ifft2
-from skimage.util import img_as_float
+from skimage.util import img_as_float, img_as_ubyte
 
 
 def _charbonnier_derivative(x: np.ndarray, p: float, e: float) -> np.ndarray:
@@ -153,9 +153,13 @@ class ILSSmoothingFilter:
         the number of iterations that that are performed within the filter
     epsilon : float
         small, non-zero constant, i.e. :math:`\\epsilon`
+    use_padding : bool
+        if enabled, then the filter will apply padding to account for the fact
+        that frequency-domain filtering can introduce border artifacts
     '''
     def __init__(self, smoothing: float, edge_preservation: float,
-                 iterations: int = 4, epsilon: float = 1e-4):
+                 iterations: int = 4, epsilon: float = 1e-4,
+                 use_padding: bool = True):
         '''Initialize a new ILS filter.
 
         Parameters
@@ -169,6 +173,8 @@ class ILSSmoothingFilter:
         epsilon : float, optional
             small, non-zero value to ensure the Charbonnier penalty is non-zero
             at zero; optional and defaults to '0.0001'
+        use_padding : bool, optional
+            enable/disable border padding; optional and default is ``True``
         '''
         if edge_preservation < 0 or edge_preservation > 1:
             raise ValueError('Edge preservation value must be between 0 and 1.')
@@ -177,6 +183,7 @@ class ILSSmoothingFilter:
         self.edge_preservation = edge_preservation
         self.iterations = iterations
         self.epsilon = epsilon
+        self.use_padding = use_padding
         self._c = self.edge_preservation * self.epsilon ** (self.edge_preservation/2 - 1)
 
     def apply(self, img: np.ndarray) -> np.ndarray:
@@ -197,14 +204,19 @@ class ILSSmoothingFilter:
         ValueError
             if the input image isn't greyscale
         '''
+        is_ubyte = img.dtype == np.uint8
         if img.ndim != 2:
             raise ValueError('Input must be a monochrome image.')
         if img.ndim == 3 and img.shape[0] != 1:
             raise ValueError('Input must be a monochrome image.')
 
         # Setup the image (includes padding).
-        pad_width = max(int(img.shape[0]/4), int(img.shape[1]/4))
-        padded = np.pad(img_as_float(img), pad_width, mode='edge')
+        if self.use_padding:
+            pad_width = max(int(img.shape[0]/8), int(img.shape[1]/8))
+            padded = np.pad(img_as_float(img), pad_width, mode='edge')
+        else:
+            pad_width = 0
+            padded = img_as_float(img)
 
         # Pre-compute all of the static Fourier transforms.
         fourier_delta_x = gradient_frequency(Direction.HORIZONTAL, padded.shape)
@@ -241,4 +253,9 @@ class ILSSmoothingFilter:
 
         # Transform back into spatial domain and remove the excess padding.
         output = np.abs(ifft2(fourier_output))
-        return output[pad_width:(pad_width+img.shape[0]), pad_width:(pad_width+img.shape[1])]
+        output = output[pad_width:(pad_width+img.shape[0]), pad_width:(pad_width+img.shape[1])]
+        if is_ubyte:
+            output[output < 0] = 0
+            output[output > 1] = 1
+            output = img_as_ubyte(output)
+        return output
