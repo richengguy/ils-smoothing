@@ -1,11 +1,11 @@
-import enum
-from typing import Dict, NamedTuple, Type
+from typing import NamedTuple
 
 import click
 import numpy as np
+from scipy.ndimage import convolve
 from skimage import filters
 from skimage.color import rgb2gray
-from skimage.util import img_as_float, img_as_ubyte
+from skimage.util import img_as_float
 
 from ._effect import Effect
 from ._types import CommonOptions
@@ -97,20 +97,6 @@ class ToningEffect(Effect):
             raise ValueError('Only 8-bit and floating point images are supported.')
 
     def _implementation(self, img: np.ndarray) -> np.ndarray:
-        '''Apply the filter.
-
-        An input RGB image is first converted into greyscale before processing.
-
-        Parameters
-        ----------
-        img : np.ndarray
-            input RGB or monochrome image
-
-        Returns
-        -------
-        np.ndarray
-            filtered, monochrome image
-        '''
         img = img_as_float(rgb2gray(img))
 
         # 1. Calculate the xDoG response.
@@ -123,6 +109,30 @@ class ToningEffect(Effect):
         toned = self._style.apply(xDoG)
 
         return toned
+
+
+class LineCleanup(Effect):
+    '''Performs some simple processing to clean up any thresholded image lines.
+
+    This uses a straightforward corner detection approach to find corners and
+    then compute the average value at that location.
+    '''
+    def _validate(self, img: np.ndarray):
+        if img.ndim != 2:
+            raise ValueError('Image must be greyscale.')
+
+    def _implementation(self, img: np.ndarray) -> np.ndarray:
+        h = np.array([[0, 1, -1]])
+
+        horz_edges = convolve(img, h, mode='nearest')
+        vert_edges = convolve(img, h.T, mode='nearest')
+
+        corners = np.logical_and(np.abs(horz_edges) > 0, np.abs(vert_edges) > 0)
+        blur = convolve(img, np.ones((3, 3)), mode='nearest') / 9
+
+        out = img.copy()
+        out[corners] = blur[corners]
+        return out
 
 
 @click.command('comicbook')
@@ -154,4 +164,8 @@ def command(options: CommonOptions, style: str, blur: float, strength: float,
         raise click.ClickException('Cannot processing image.')
 
     out = effect.apply(img)
+
+    if style == 'two-tone':
+        out = LineCleanup().apply(out)
+
     options.save_image(out)
