@@ -14,10 +14,12 @@ from . import ILSSmoothingFilter
               help='Smoothing amount.')
 @click.option('-e', '--edge-preservation', default=0.8, show_default=True,
               help='Edge preservation/retention amount.')
+@click.option('-n', '--iterations', default=4, show_default=True,
+              help='Number of filtering iterations.')
 @click.argument('input_image', type=click.Path(exists=True, file_okay=True, dir_okay=False))
 @click.argument('output_image', type=click.Path(file_okay=True, dir_okay=False))
 def main(no_input: bool, smoothing: float, edge_preservation: float,
-         input_image: str, output_image: str):
+         iterations: int, input_image: str, output_image: str):
     '''Real-time Smoothing via Iterative Least Squares
 
     The ILS filter is an edge-aware filter that can selectively blur weak edges
@@ -37,7 +39,7 @@ def main(no_input: bool, smoothing: float, edge_preservation: float,
     out = np.zeros_like(img)
 
     # Filter each channel independently.
-    ils = ILSSmoothingFilter(smoothing, edge_preservation)
+    ils = ILSSmoothingFilter(smoothing, edge_preservation, iterations)
     for i in range(img.ndim):
         out[:, :, i] = ils.apply(img[:, :, i])
 
