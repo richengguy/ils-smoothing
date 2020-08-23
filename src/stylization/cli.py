@@ -2,7 +2,7 @@ import pathlib
 
 import click
 
-from . import rotoscope
+from . import rotoscope, toning
 from ._types import CommonOptions
 
 
@@ -32,3 +32,4 @@ def main(ctx: click.Context, no_input: bool, input_image: str, output_image: str
 
 
 main.add_command(rotoscope.command)
+main.add_command(toning.command)

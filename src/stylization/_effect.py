@@ -37,13 +37,11 @@ class Effect(abc.ABC):
                 click.echo(str(e), err=True)
             return False
 
-    @abc.abstractmethod
     def apply(self, img: np.ndarray) -> np.ndarray:
         '''Apply the effect onto an image.
 
-        The effect should be able to process any image when its implementation
-        of :meth:`can_process` returns ``True``.  Otherwise it should raise a
-        ValueError
+        The effect should be able to process any image when :math:`can_process`
+        returns ``True``.  Otherwise it will return a value error.
 
         Parameters
         ----------
@@ -60,6 +58,8 @@ class Effect(abc.ABC):
         ValueError
             if the image type cannot be processed
         '''
+        self._validate(img)
+        return self._implementation(img)
 
     @abc.abstractmethod
     def _validate(self, img: np.ndarray):
@@ -74,4 +74,22 @@ class Effect(abc.ABC):
         ------
         ValueError
             with the reason why the image cannot be processed
+        '''
+
+    @abc.abstractmethod
+    def _implementation(self, img: np.ndarray) -> np.ndarray:
+        '''The actual filter implementation.
+
+        This is called by :meth:`apply`.  A subclass should implement this to
+        run the filter.
+
+        Parameters
+        ----------
+        img : np.ndarray
+            image being filtered
+
+        Returns
+        -------
+        np.ndarray
+            filtered output
         '''

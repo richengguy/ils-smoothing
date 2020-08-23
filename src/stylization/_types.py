@@ -3,6 +3,7 @@ from typing import NamedTuple
 
 import numpy as np
 from skimage.io import imread, imsave
+from skimage.util import img_as_ubyte
 
 
 class CommonOptions(NamedTuple):
@@ -16,4 +17,4 @@ class CommonOptions(NamedTuple):
         args = {}
         if self.output_image.suffix != '.png':
             args['quality'] = 100
-        imsave(self.output_image, img)
+        imsave(self.output_image, img_as_ubyte(img))
