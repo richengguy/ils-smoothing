@@ -7,6 +7,7 @@ from ils_smoothing import ILSSmoothingFilter
 from ._effect import Effect
 from ._types import CommonOptions
 
+
 class RotoscopeEffect(Effect):
     '''Create a rotoscoping effect similar to "A Scanner Darkly".'''
     class Config(NamedTuple):
@@ -43,7 +44,40 @@ class RotoscopeEffect(Effect):
         np.ndarray
             processed image
         '''
-        return img
+        from skimage.io import imsave
+        smoothed = np.zeros_like(img)
+        edge_response = np.zeros(img.shape)
+
+        # 1. Run the ILS filter to get a smoothed colour, while also tapping the
+        #    edge responses from within the filter.
+        for i in range(img.ndim):
+            smoothed[:, :, i] = self._ils_filter.apply(img[:, :, i])
+
+            state: ILSSmoothingFilter.FilterStages
+            if (state := self._ils_filter.filter_stages) is None:  # type: ignore
+                raise RuntimeError('Could not get internal filter state.')
+
+            edge_response[:, :, i] = state.edge_filter()
+
+        imsave('smoothed.png', smoothed)
+
+        # 2. Take the average response across the colour channels.
+        edge_response = np.mean(edge_response, axis=2)
+        delta = edge_response.max() - edge_response.min()
+        imsave('edge-response.png', edge_response)
+
+        # 3. Map into onto a known range, e.g. [-1, 1], and then apply a
+        #    non-linear function to create a basic edge map.
+        scaled = edge_response/delta
+        mask = np.abs(scaled) < 0.01
+        # mask = np.logical_not(mask)
+        imsave('scaled.png', scaled)
+        imsave('mask.png', np.logical_not(mask))
+
+        overlay = smoothed * mask[:, :, np.newaxis]
+        imsave('overlay.png', overlay)
+
+        return overlay
 
     def _validate(self, img: np.ndarray):
         '''Determine if the image can be processed.'''

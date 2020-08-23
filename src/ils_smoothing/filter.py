@@ -199,10 +199,11 @@ class ILSSmoothingFilter:
             return self._return_filter(self._low_pass_filter, is_frequency)
 
         def _return_filter(self, response: np.ndarray, is_frequency: bool) -> np.ndarray:
-            if not is_frequency:
+            if is_frequency:
                 return response
-            return response[self._padding:(self._sz[0] + self._padding),
-                            self._padding:(self._sz[1] + self._padding)]
+            out = ifft2(response).real
+            return out[self._padding:(self._sz[0] + self._padding),
+                       self._padding:(self._sz[1] + self._padding)]
 
     def __init__(self, smoothing: float, edge_preservation: float,
                  iterations: int = 4, epsilon: float = 1e-4,
