@@ -127,7 +127,7 @@ class LineCleanup(Effect):
             raise ValueError('Image must be greyscale.')
 
     def _implementation(self, img: np.ndarray) -> np.ndarray:
-        h = np.array([[0, 1, -1]])
+        h = np.array([[1, 0, -1]])
 
         horz_edges = convolve(img, h, mode='nearest')
         vert_edges = convolve(img, h.T, mode='nearest')
