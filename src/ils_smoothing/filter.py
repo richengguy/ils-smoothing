@@ -160,13 +160,20 @@ class ILSSmoothingFilter:
     class FilterStages:
         '''Data type that stores the filter's intermediate states.'''
         def __init__(self, padding: int, sz: Tuple[int, int],
-                     hpf: np.ndarray, lpf: np.ndarray):
+                     horz_edge: np.ndarray, vert_edge: np.ndarray,
+                     penalty: np.ndarray, lpf: np.ndarray):
             self._padding = padding
             self._sz = sz
-            self._edge_filter = hpf.copy()
+            self._penalty = penalty.copy()
             self._low_pass_filter = lpf.copy()
 
-        def edge_filter(self, *, is_frequency: bool = False) -> np.ndarray:
+            # not frequency domain, so edge info should have no padding
+            self._horizontal_edges = horz_edge[self._padding:(self._sz[0] + self._padding),
+                                               self._padding:(self._sz[1] + self._padding)]
+            self._vertical_edges = vert_edge[self._padding:(self._sz[0] + self._padding),
+                                             self._padding:(self._sz[1] + self._padding)]
+
+        def edge_penalty(self, *, is_frequency: bool = False) -> np.ndarray:
             '''The edge filtering component of the ILS filter.
 
             Parameters
@@ -180,7 +187,7 @@ class ILSSmoothingFilter:
             np.ndarray
                 filter response
             '''
-            return self._return_filter(self._edge_filter, is_frequency)
+            return self._return_filter(self._penalty, is_frequency)
 
         def low_pass_filter(self, *, is_frequency: bool = False) -> np.ndarray:
             '''The low pass filtering component in the ILS filter.
@@ -197,6 +204,43 @@ class ILSSmoothingFilter:
                 filter response
             '''
             return self._return_filter(self._low_pass_filter, is_frequency)
+
+        def edge_response(self, *, mode: str = 'magnitude') -> np.ndarray:
+            '''Returns the internally computed edge response.
+
+            Parameters
+            ----------
+            mode : str, optional
+                format of the edge response, default is ``magnitude`` and may
+                be one of the following:
+
+                ``magnitude``
+                    edge response magnitude
+
+                ``angle``
+                    edge angle, in radians
+
+                ``vertical``
+                    vertical edges
+
+                ``horizontal``
+                    horizontal edges
+
+            Returns
+            -------
+            np.ndarray
+                edge response
+            '''
+            if mode == 'magnitude':
+                return np.sqrt(self._horizontal_edges**2 + self._vertical_edges**2)
+            elif mode == 'angle':
+                return np.arctan2(self._vertical_edges, self._horizontal_edges)
+            elif mode == 'horizontal':
+                return self._horizontal_edges
+            elif mode == 'vertical':
+                return self._vertical_edges
+            else:
+                raise ValueError(f'Unknown response mode "{mode}"')
 
         def _return_filter(self, response: np.ndarray, is_frequency: bool) -> np.ndarray:
             if is_frequency:
@@ -327,6 +371,8 @@ class ILSSmoothingFilter:
         # Store the internal state.
         self._internal_state = ILSSmoothingFilter.FilterStages(pad_width,
                                                                img.shape,
+                                                               doutput_x,
+                                                               doutput_y,
                                                                edge_penalty,
                                                                low_pass_filter)
 

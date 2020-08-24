@@ -2,21 +2,24 @@ from typing import NamedTuple
 
 import click
 import numpy as np
+from skimage.util import img_as_float, img_as_ubyte
 from ils_smoothing import ILSSmoothingFilter
 
-from ._effect import Effect
-from ._types import CommonOptions
+from ._types import CommonOptions, Effect
+from .effects import LineCleanup, SoftThreshold
 
 
 class RotoscopeEffect(Effect):
     '''Create a rotoscoping effect similar to "A Scanner Darkly".'''
     class Config(NamedTuple):
         '''Configuration options for the rotoscope effect.'''
-        smoothing: float = 5
-        edge_preservation: float = 1
-        iterations: int = 8
+        quantization: int = 0  #: colour quantization amount; set to '0' to disable
+        line_cleanup: bool = False  #: enable the line cleanup algorithm
+        debug_output: bool = False  #: enable debugging output
 
-    def __init__(self, config: Config = Config()):
+    def __init__(self, ils_filter: ILSSmoothingFilter,
+                 edge_threshold: Effect,
+                 config: Config = Config()):
         '''Initialize a new rotoscope effect object.
 
         See the :class:`RotoscopeEffect.Config` structure for the various
@@ -24,26 +27,19 @@ class RotoscopeEffect(Effect):
 
         Parameters
         ----------
+        ils_filter : ILSSmoothingFilter
+            the ILS filter performing the edge-aware smoothing
+        edge_threshold : Effect
+            effect used to manipulate edge response before drawing edge lines
+            on the image
         config : Config, optional
             runtime configuration
         '''
-        self._ils_filter = ILSSmoothingFilter(config.smoothing,
-                                              config.edge_preservation,
-                                              config.iterations)
+        self._ils_filter = ils_filter
+        self._edge_threshold = edge_threshold
+        self._config = config
 
-    def apply(self, img: np.ndarray) -> np.ndarray:
-        '''Apply the rotoscope effect filter to an image.
-
-        Parameters
-        ----------
-        img : np.ndarray
-            input RGB image
-
-        Returns
-        -------
-        np.ndarray
-            processed image
-        '''
+    def _implementation(self, img: np.ndarray) -> np.ndarray:
         from skimage.io import imsave
         smoothed = np.zeros_like(img)
         edge_response = np.zeros(img.shape)
@@ -57,27 +53,53 @@ class RotoscopeEffect(Effect):
             if (state := self._ils_filter.filter_stages) is None:  # type: ignore
                 raise RuntimeError('Could not get internal filter state.')
 
-            edge_response[:, :, i] = state.edge_filter()
+            edge_response[:, :, i] = state.edge_response()
 
-        imsave('smoothed.png', smoothed)
+        if self._config.debug_output:
+            imsave('smoothed.png', img_as_ubyte(smoothed))
 
-        # 2. Take the average response across the colour channels.
+        # The remaining processing is easier to work with if in float.
+        if img.dtype == np.uint8:
+            smoothed = img_as_float(smoothed)
+
+        # 2. Quantize the colours to distinct levels.
+        if self._config.quantization > 0:
+            quantized = np.round(self._config.quantization*smoothed) / self._config.quantization
+        else:
+            quantized = smoothed.copy()
+
+        if self._config.debug_output:
+            imsave('quantized.png', quantized)
+
+        # 3. Take the average response across the colour channels.
         edge_response = np.mean(edge_response, axis=2)
-        delta = edge_response.max() - edge_response.min()
-        imsave('edge-response.png', edge_response)
+        edge_response = edge_response / edge_response.max()
 
-        # 3. Map into onto a known range, e.g. [-1, 1], and then apply a
-        #    non-linear function to create a basic edge map.
-        scaled = edge_response/delta
-        mask = np.abs(scaled) < 0.01
-        # mask = np.logical_not(mask)
-        imsave('scaled.png', scaled)
-        imsave('mask.png', np.logical_not(mask))
+        if self._config.debug_output:
+            imsave('edge-response.png', edge_response)
 
-        overlay = smoothed * mask[:, :, np.newaxis]
-        imsave('overlay.png', overlay)
+        # 4. Use a non-linear function to boost strong edges and suppress weak
+        #    ones.
+        scaled = self._edge_threshold.apply(edge_response)
+        scaled = (scaled - scaled.min()) / (scaled.max() - scaled.min())
 
-        return overlay
+        if self._config.line_cleanup:
+            scaled = LineCleanup().apply(scaled)
+
+        if self._config.debug_output:
+            imsave('scaled-edges.png', scaled)
+
+        # 5. Apply the edge mask onto the quantized image.
+        mask = 1 - scaled
+        out = quantized * mask[:, :, np.newaxis]
+
+        if self._config.debug_output:
+            imsave('mask.png', mask)
+
+        if img.dtype == np.uint8:
+            out = img_as_ubyte(out)
+
+        return out
 
     def _validate(self, img: np.ndarray):
         '''Determine if the image can be processed.'''
@@ -89,11 +111,26 @@ class RotoscopeEffect(Effect):
 
 
 @click.command('rotoscope')
+@click.option('-s', '--smoothing', default=0.4,
+              help='The amount of smoothing to apply.')
+@click.option('-c', '--colours', default=0,
+              help='Apply colour quantization, giving the effect of a reduced '
+                   'colour pallet.')
+@click.option('-t', '--edge-threshold', default=0.1,
+              help='Control when edges will appear in the output.')
+@click.option('-e', '--edge-scaling', default=10,
+              help='Control how gradually edges appear.')
 @click.pass_obj
-def command(options: CommonOptions):
+def command(options: CommonOptions, smoothing: float, colours: int,
+            edge_threshold: float, edge_scaling: float):
     '''Render an image with a rotoscope-like style.'''
     img = options.load_image()
-    effect = RotoscopeEffect()
+
+    ils = ILSSmoothingFilter(5, smoothing, 8)
+    edge_filter = SoftThreshold(edge_threshold, edge_scaling)
+    config = RotoscopeEffect.Config(quantization=colours)
+    effect = RotoscopeEffect(ils, edge_filter, config)
+
     if not effect.can_process(img):
         raise click.ClickException('Cannot processing image.')
     options.save_image(effect.apply(img))

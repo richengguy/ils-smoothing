@@ -2,70 +2,12 @@ from typing import NamedTuple
 
 import click
 import numpy as np
-from scipy.ndimage import convolve
 from skimage import filters
 from skimage.color import rgb2gray
 from skimage.util import img_as_float
 
-from ._effect import Effect
-from ._types import CommonOptions
-
-
-class _TwoToneStyle(Effect):
-    '''Two-tone thresholding for the xDoG images.'''
-    def __init__(self, level: float):
-        '''Initialize the toning operator.
-
-        Parameters
-        ----------
-        level : float
-            threshold level; must be between 0 and 1
-        '''
-        self.level = level  #: threshold level
-
-    def _implementation(self, img: np.ndarray) -> np.ndarray:
-        out = np.zeros_like(img)
-        out[img > self.level] = 1
-        return out
-
-    def _validate(self, img: np.ndarray):
-        if img.ndim != 2:
-            raise ValueError('Image must be greyscale.')
-
-        if img.dtype != np.float:
-            raise ValueError('Image must be floating point.')
-
-
-class _DetailStyle(Effect):
-    '''A thresholded toning style that preserves some image detail.'''
-    def __init__(self, level: float, scaling: float):
-        '''Initialize the toning operator.
-
-        Parameters
-        ----------
-        level : float
-            [description]
-        scaling : float
-            [description]
-        '''
-        self.level = level  #: threshold level
-        self.scaling = scaling  #: amount of detail to show when below a threshold
-
-    def _implementation(self, img: np.ndarray) -> np.ndarray:
-        out = np.zeros_like(img)
-
-        mask = out > self.level
-        out[mask] = 1
-        out[~mask] = 0.5*(1 + np.tanh(self.scaling*(img[~mask] - self.level)))
-
-        return out
-
-    def _validate(self, img: np.ndarray):
-        if img.ndim != 2:
-            raise ValueError('Image must be greyscale.')
-
-        if img.dtype != np.float:
-            raise ValueError('Image must be floating point.')
+from ._types import CommonOptions, Effect
+from .effects import SimpleThreshold, DetailedToning, LineCleanup
 
 
 class ToningEffect(Effect):
@@ -111,30 +53,6 @@ class ToningEffect(Effect):
         return toned
 
 
-class LineCleanup(Effect):
-    '''Performs some simple processing to clean up any thresholded image lines.
-
-    This uses a straightforward corner detection approach to find corners and
-    then compute the average value at that location.
-    '''
-    def _validate(self, img: np.ndarray):
-        if img.ndim != 2:
-            raise ValueError('Image must be greyscale.')
-
-    def _implementation(self, img: np.ndarray) -> np.ndarray:
-        h = np.array([[0, 1, -1]])
-
-        horz_edges = convolve(img, h, mode='nearest')
-        vert_edges = convolve(img, h.T, mode='nearest')
-
-        corners = np.logical_and(np.abs(horz_edges) > 0, np.abs(vert_edges) > 0)
-        blur = convolve(img, np.ones((3, 3)), mode='nearest') / 9
-
-        out = img.copy()
-        out[corners] = blur[corners]
-        return out
-
-
 @click.command('comicbook')
 @click.option('-s', '--style', type=click.Choice(['two-tone', 'detailed']),
               default='two-tone', help='Toning style.')
@@ -154,9 +72,9 @@ def command(options: CommonOptions, style: str, blur: float, strength: float,
 
     styling: Effect
     if style == 'two-tone':
-        styling = _TwoToneStyle(threshold)
+        styling = SimpleThreshold(threshold)
     elif style == 'detailed':
-        styling = _DetailStyle(threshold, detail)
+        styling = DetailedToning(threshold, detail)
 
     config = ToningEffect.Config(strength=strength, blur=blur)
     effect = ToningEffect(styling, config)
