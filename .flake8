@@ -1,0 +1,5 @@
+[flake8]
+max-line-length = 100
+per-file-ignores =
+    # Allow "imported by unused" imports in __init__.py files.
+    __init__.py: F401
