@@ -17,7 +17,7 @@ class TestFrequencyResponse:
         h = scipy.fft.ifft2(H)
 
         expected = np.zeros(sz)
-        expected[:x.shape[0], :x.shape[1]] = x
+        expected[: x.shape[0], : x.shape[1]] = x
 
         assert H.shape == sz
         assert_allclose(h.real, expected, atol=1e-9)
@@ -37,7 +37,9 @@ class TestFrequencyResponse:
 
 class TestCharbonnierDerivative:
     def test_basic(self):
+        # fmt: off
         assert _charbonnier_derivative(1, 1, 1e-4) == 0.9999500037496876
         assert _charbonnier_derivative(1, 2, 1e-4) == 2.0
         assert _charbonnier_derivative(2, 1, 1e-4) == 0.9999875002343701172943091202333
         assert _charbonnier_derivative(-1, 1, 1e-4) == -_charbonnier_derivative(1, 1, 1e-4)
+        # fmt: on

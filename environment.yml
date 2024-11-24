@@ -3,6 +3,6 @@ channels:
     - default
     - conda-forge
 dependencies:
-    - python=3.8
+    - python=3.13
     - pip
-    - scikit-image=0.17
+    - scikit-image=0.24

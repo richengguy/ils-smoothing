@@ -7,7 +7,7 @@ from skimage.util import img_as_float, img_as_ubyte
 
 
 def _charbonnier_derivative(x: np.ndarray, p: float, e: float) -> np.ndarray:
-    '''Computes the derivate of the Charbonnier penalty function.
+    """Computes the derivate of the Charbonnier penalty function.
 
     The Charbonnier penalty is defined as
 
@@ -36,12 +36,12 @@ def _charbonnier_derivative(x: np.ndarray, p: float, e: float) -> np.ndarray:
     -------
     np.ndarray
         the value of the derivative
-    '''
+    """
     return p * x * (x**2 + e) ** (0.5 * p - 1)
 
 
 def _frequency_response(h: np.ndarray, sz: Tuple[int, int]) -> np.ndarray:
-    '''Generate the frequency response of a given filter kernel.
+    """Generate the frequency response of a given filter kernel.
 
     The frequency response, :math:`H`, of the kernel, :math:`h`, is a
     zero-padded 2D FFT.
@@ -63,27 +63,28 @@ def _frequency_response(h: np.ndarray, sz: Tuple[int, int]) -> np.ndarray:
     ------
     ValueError
         if the output size is smaller than the kernel
-    '''
+    """
     rows, cols = sz
     if h.ndim != 2:
-        raise ValueError('Filter must be 2D.')
+        raise ValueError("Filter must be 2D.")
 
     if h.shape[0] > rows or h.shape[1] > cols:
-        raise ValueError('Output shape must be larger that the filtering kernel.')
+        raise ValueError("Output shape must be larger that the filtering kernel.")
 
     h_padded = np.zeros(sz)
-    h_padded[:h.shape[0], :h.shape[1]] = h
+    h_padded[: h.shape[0], : h.shape[1]] = h
     return fft2(h_padded)
 
 
 class Direction(enum.IntEnum):
-    '''Gradient filtering direction.'''
+    """Gradient filtering direction."""
+
     VERTICAL = 0
     HORIZONTAL = 1
 
 
 def gradient_frequency(direction: Direction, outsz: Tuple[int, int]) -> np.ndarray:
-    '''Compute the frequency response of the backwards difference kernel.
+    """Compute the frequency response of the backwards difference kernel.
 
     A backwards difference, i.e. :math:`\\Delta x[n] = x[n] - x[n - 1]`, is
     equivalent to the filtering kernel
@@ -118,7 +119,7 @@ def gradient_frequency(direction: Direction, outsz: Tuple[int, int]) -> np.ndarr
     -------
     ndarray
         a numpy array with the frequency-domain response for the gradient filter
-    '''  # noqa: E501
+    """  # noqa: E501
     rows, cols = outsz
     if direction == Direction.HORIZONTAL:
         N = cols
@@ -136,7 +137,7 @@ def gradient_frequency(direction: Direction, outsz: Tuple[int, int]) -> np.ndarr
 
 
 class ILSSmoothingFilter:
-    '''Implementation of the Iterative Least Squares smoothing filter.
+    """Implementation of the Iterative Least Squares smoothing filter.
 
     This is an implementation of the "Real-time Smoothing via Iterative Least
     Squares" smoothing algorithm by Liu et al.
@@ -156,25 +157,37 @@ class ILSSmoothingFilter:
     use_padding : bool
         if enabled, then the filter will apply padding to account for the fact
         that frequency-domain filtering can introduce border artifacts
-    '''
+    """
+
     class FilterStages:
-        '''Data type that stores the filter's intermediate states.'''
-        def __init__(self, padding: int, sz: Tuple[int, int],
-                     horz_edge: np.ndarray, vert_edge: np.ndarray,
-                     penalty: np.ndarray, lpf: np.ndarray):
+        """Data type that stores the filter's intermediate states."""
+
+        def __init__(
+            self,
+            padding: int,
+            sz: Tuple[int, int],
+            horz_edge: np.ndarray,
+            vert_edge: np.ndarray,
+            penalty: np.ndarray,
+            lpf: np.ndarray,
+        ):
             self._padding = padding
             self._sz = sz
             self._penalty = penalty.copy()
             self._low_pass_filter = lpf.copy()
 
             # not frequency domain, so edge info should have no padding
-            self._horizontal_edges = horz_edge[self._padding:(self._sz[0] + self._padding),
-                                               self._padding:(self._sz[1] + self._padding)]
-            self._vertical_edges = vert_edge[self._padding:(self._sz[0] + self._padding),
-                                             self._padding:(self._sz[1] + self._padding)]
+            self._horizontal_edges = horz_edge[
+                self._padding : (self._sz[0] + self._padding),
+                self._padding : (self._sz[1] + self._padding),
+            ]
+            self._vertical_edges = vert_edge[
+                self._padding : (self._sz[0] + self._padding),
+                self._padding : (self._sz[1] + self._padding),
+            ]
 
         def edge_penalty(self, *, is_frequency: bool = False) -> np.ndarray:
-            '''The edge filtering component of the ILS filter.
+            """The edge filtering component of the ILS filter.
 
             Parameters
             ----------
@@ -186,11 +199,11 @@ class ILSSmoothingFilter:
             -------
             np.ndarray
                 filter response
-            '''
+            """
             return self._return_filter(self._penalty, is_frequency)
 
         def low_pass_filter(self, *, is_frequency: bool = False) -> np.ndarray:
-            '''The low pass filtering component in the ILS filter.
+            """The low pass filtering component in the ILS filter.
 
             Parameters
             ----------
@@ -202,11 +215,11 @@ class ILSSmoothingFilter:
             -------
             np.ndarray
                 filter response
-            '''
+            """
             return self._return_filter(self._low_pass_filter, is_frequency)
 
-        def edge_response(self, *, mode: str = 'magnitude') -> np.ndarray:
-            '''Returns the internally computed edge response.
+        def edge_response(self, *, mode: str = "magnitude") -> np.ndarray:
+            """Returns the internally computed edge response.
 
             Parameters
             ----------
@@ -230,29 +243,38 @@ class ILSSmoothingFilter:
             -------
             np.ndarray
                 edge response
-            '''
-            if mode == 'magnitude':
+            """
+            if mode == "magnitude":
                 return np.sqrt(self._horizontal_edges**2 + self._vertical_edges**2)
-            elif mode == 'angle':
+            elif mode == "angle":
                 return np.arctan2(self._vertical_edges, self._horizontal_edges)
-            elif mode == 'horizontal':
+            elif mode == "horizontal":
                 return self._horizontal_edges
-            elif mode == 'vertical':
+            elif mode == "vertical":
                 return self._vertical_edges
             else:
                 raise ValueError(f'Unknown response mode "{mode}"')
 
-        def _return_filter(self, response: np.ndarray, is_frequency: bool) -> np.ndarray:
+        def _return_filter(
+            self, response: np.ndarray, is_frequency: bool
+        ) -> np.ndarray:
             if is_frequency:
                 return response
             out = ifft2(response).real
-            return out[self._padding:(self._sz[0] + self._padding),
-                       self._padding:(self._sz[1] + self._padding)]
+            return out[
+                self._padding : (self._sz[0] + self._padding),
+                self._padding : (self._sz[1] + self._padding),
+            ]
 
-    def __init__(self, smoothing: float, edge_preservation: float,
-                 iterations: int = 4, epsilon: float = 1e-4,
-                 use_padding: bool = True):
-        '''Initialize a new ILS filter.
+    def __init__(
+        self,
+        smoothing: float,
+        edge_preservation: float,
+        iterations: int = 4,
+        epsilon: float = 1e-4,
+        use_padding: bool = True,
+    ):
+        """Initialize a new ILS filter.
 
         Parameters
         ----------
@@ -273,35 +295,37 @@ class ILSSmoothingFilter:
         ValueError
             if any of the properties are invalid, e.g. zero or negative
             iterations, negative smoothing, etc
-        '''
+        """
         if iterations < 1:
-            raise ValueError('Number of iterations must be larger than 1.')
+            raise ValueError("Number of iterations must be larger than 1.")
 
         if smoothing < 0:
-            raise ValueError('Smoothing value cannot be negative.')
+            raise ValueError("Smoothing value cannot be negative.")
 
         if edge_preservation < 0 or edge_preservation > 1:
-            raise ValueError('Edge preservation value must be between 0 and 1.')
+            raise ValueError("Edge preservation value must be between 0 and 1.")
 
         self.smoothing = smoothing
         self.edge_preservation = edge_preservation
         self.iterations = iterations
         self.epsilon = epsilon
         self.use_padding = use_padding
-        self._c = self.edge_preservation * self.epsilon ** (self.edge_preservation/2 - 1)
+        self._c = self.edge_preservation * self.epsilon ** (
+            self.edge_preservation / 2 - 1
+        )
         self._internal_state: Optional[ILSSmoothingFilter.FilterStages] = None
 
     @property
     def filter_stages(self) -> Optional[FilterStages]:
-        '''FilterStages: The internal state of the ILS filter after execution.
+        """FilterStages: The internal state of the ILS filter after execution.
 
         This will be ``None`` if the filter hasn't been used.  Call this after
         using :meth:`apply` to get the filter's internal state.
-        '''
+        """
         return self._internal_state
 
     def apply(self, img: np.ndarray) -> np.ndarray:
-        '''Apply the filter onto some image.
+        """Apply the filter onto some image.
 
         Parameters
         ----------
@@ -317,17 +341,17 @@ class ILSSmoothingFilter:
         ------
         ValueError
             if the input image isn't greyscale
-        '''
+        """
         is_ubyte = img.dtype == np.uint8
         if img.ndim != 2:
-            raise ValueError('Input must be a monochrome image.')
+            raise ValueError("Input must be a monochrome image.")
         if img.ndim == 3 and img.shape[0] != 1:
-            raise ValueError('Input must be a monochrome image.')
+            raise ValueError("Input must be a monochrome image.")
 
         # Setup the image (includes padding).
         if self.use_padding:
-            pad_width = max(int(img.shape[0]/8), int(img.shape[1]/8))
-            padded = np.pad(img_as_float(img), pad_width, mode='edge')
+            pad_width = max(int(img.shape[0] / 8), int(img.shape[1] / 8))
+            padded = np.pad(img_as_float(img), pad_width, mode="edge")
         else:
             pad_width = 0
             padded = img_as_float(img)
@@ -339,7 +363,7 @@ class ILSSmoothingFilter:
         # Compute the denominator of equation (9).  This is done in two steps
         # for clarity.  Note that this is the exact inverse of a Laplacian
         # sharpening filter.
-        laplacian = np.abs(fourier_delta_x)**2 + np.abs(fourier_delta_y)**2
+        laplacian = np.abs(fourier_delta_x) ** 2 + np.abs(fourier_delta_y) ** 2
         low_pass_filter = 1 / (1 + 0.5 * self._c * self.smoothing * laplacian)
 
         # Perform the iterative filtering.
@@ -353,8 +377,12 @@ class ILSSmoothingFilter:
 
             # 2. Compute the "edge penalty" images; this is equation (7) in the
             #    paper.
-            u_x = self._c * doutput_x - _charbonnier_derivative(doutput_x, self.edge_preservation, self.epsilon)  # noqa: E501
-            u_y = self._c * doutput_y - _charbonnier_derivative(doutput_y, self.edge_preservation, self.epsilon)  # noqa: E501
+            u_x = self._c * doutput_x - _charbonnier_derivative(
+                doutput_x, self.edge_preservation, self.epsilon
+            )
+            u_y = self._c * doutput_y - _charbonnier_derivative(
+                doutput_y, self.edge_preservation, self.epsilon
+            )
 
             # 3. Compute the edge filter by essentially computing the gradients
             #    of the penalty images.
@@ -369,16 +397,16 @@ class ILSSmoothingFilter:
             fourier_output = numerator * low_pass_filter
 
         # Store the internal state.
-        self._internal_state = ILSSmoothingFilter.FilterStages(pad_width,
-                                                               img.shape,
-                                                               doutput_x,
-                                                               doutput_y,
-                                                               edge_penalty,
-                                                               low_pass_filter)
+        self._internal_state = ILSSmoothingFilter.FilterStages(
+            pad_width, img.shape, doutput_x, doutput_y, edge_penalty, low_pass_filter
+        )
 
         # Transform back into spatial domain and remove the excess padding.
         output = np.abs(ifft2(fourier_output))
-        output = output[pad_width:(pad_width+img.shape[0]), pad_width:(pad_width+img.shape[1])]
+        output = output[
+            pad_width : (pad_width + img.shape[0]),
+            pad_width : (pad_width + img.shape[1]),
+        ]
         if is_ubyte:
             output[output < 0] = 0
             output[output > 1] = 1
