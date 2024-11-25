@@ -18,15 +18,15 @@ def charbonnier_derivative(x: np.ndarray, p: float, e: float) -> np.ndarray:
 
     The Charbonnier penalty is defined as
 
-    ..math::
+    .. math::
 
-        \\phi(x) = \\left(x^2 + \\epsilon)^\\frac{p}{2}.
+        \\phi(x) = \\left(x^2 + \\epsilon\\right)^\\frac{p}{2}.
 
     Therefore, its derivative, with respect to :math:`x`, is given by
 
-    ..math::
+    .. math::
 
-        \\frac{d \\phi(x)}{dx} = px(x^2 + \\epsilon)^\\(\\frac{p}{2} - 1\\).
+        \\frac{d \\phi(x)}{dx} = px(x^2 + \\epsilon)^{(\\frac{p}{2} - 1)}.
 
     This is used in the filter's optimization loop.
 
@@ -137,10 +137,10 @@ def gradient_frequency(direction: Direction, outsz: Tuple[int, int]) -> np.ndarr
 
 
 class ILSSmoothingFilter:
-    """Implementation of the Iterative Least Squares smoothing filter.
+    """The Iterative Least Squares smoothing filter.
 
-    This is an implementation of the "Real-time Smoothing via Iterative Least
-    Squares" smoothing algorithm by Liu et al.
+    This is an implementation of the "`Real-time Smoothing via Iterative Least
+    Squares <https://arxiv.org/abs/2003.07504>`_" algorithm by Liu et al.
 
     Attributes
     ----------
