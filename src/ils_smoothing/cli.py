@@ -41,8 +41,8 @@ def main(
     """Real-time Smoothing via Iterative Least Squares
 
     The ILS filter is an edge-aware filter that can selectively blur weak edges
-    while retaining strong ones.  The `-s` and `-e` options will control the
-    filter.
+    while retaining strong ones.  The various options are used to control the
+    strength of the blur and what edges are preserved.
     """
     in_path = pathlib.Path(input_image)
     out_path = pathlib.Path(output_image)
