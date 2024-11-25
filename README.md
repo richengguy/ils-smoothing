@@ -21,9 +21,9 @@ E = \|\bar{I}(x,y) - I(x,y)\|^2 + \lambda f\{I(x,y)\}
 ```
 
 where $I(x,y)$ is the original image, $\bar{I}(x,y)$ is the smoothed image and
-$f\{I(x,y)\}$ is a regularization function.  Without $f\left\{\cdot\right\}$ you
+$f\{I(x,y)\}$ is a regularization function.  Without $f\{\cdot\}$ you
 just end up with the average value of the image.  However, depending on how you
-choose $f\left\{\cdot\right\}$, you can cause the smoothing to respect
+choose $f\{\cdot\}$, you can cause the smoothing to respect
 particularly strong edges.
 
 Now, this is what most edge-preserving filters end up doing.  Where this paper
